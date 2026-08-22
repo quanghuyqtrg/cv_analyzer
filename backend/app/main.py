@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.database import engine
+from app.routers import cvs
 
 app = FastAPI(title="CV Analyzer API")
 
@@ -25,3 +26,6 @@ async def health_check():
         db_status = f"error: {e}"
 
     return {"status": "ok", "database": db_status}
+
+
+app.include_router(cvs.router)

@@ -10,6 +10,8 @@ import unicodedata
 import re
 
 import pdfplumber
+import pytesseract
+from pdf2image import convert_from_bytes
 from docx import Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -70,12 +72,42 @@ def _extract_pdf(file_bytes: bytes) -> str:
             raise ExtractionError("PDF has no pages")
 
         parts: list[str] = []
+        needs_ocr = False
+
         for page in pages:
             text = _extract_pdf_page(page)
             if text:
                 parts.append(text)
 
-        return "\n\n".join(parts)
+        combined = "\n\n".join(parts)
+
+        # If text is too sparse, fall back to OCR
+        avg_chars_per_page = len(combined) / len(pages) if pages else 0
+        if avg_chars_per_page < 50:
+            needs_ocr = True
+
+        if needs_ocr:
+            ocr_text = _ocr_pdf(file_bytes)
+            if len(ocr_text) > len(combined):
+                return ocr_text
+
+        return combined
+
+
+def _ocr_pdf(file_bytes: bytes) -> str:
+    """Convert PDF pages to images and OCR them."""
+    try:
+        images = convert_from_bytes(file_bytes, dpi=300)
+    except Exception as exc:
+        raise ExtractionError(f"Cannot convert PDF to images for OCR: {exc}") from exc
+
+    parts: list[str] = []
+    for img in images:
+        text = pytesseract.image_to_string(img, lang="vie+eng")
+        if text and text.strip():
+            parts.append(text.strip())
+
+    return "\n\n".join(parts)
 
 
 def _extract_pdf_page(page: pdfplumber.page.Page) -> str:
